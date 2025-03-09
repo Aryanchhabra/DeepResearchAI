@@ -37,6 +37,9 @@ app.secret_key = os.urandom(24)
 csrf = CSRFProtect(app)
 CORS(app)
 
+# Exempt the research endpoint from CSRF protection
+csrf.exempt('research')
+
 # Add context processor for current date/time
 @app.context_processor
 def inject_now():

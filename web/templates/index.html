@@ -26,6 +26,7 @@
             <div class="research-form">
                 <h2 class="mb-4 text-center">Ask a Research Question</h2>
                 <form id="researchForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                         <label for="question" class="form-label">Your Question</label>
                         <textarea class="form-control" id="question" name="question" rows="3" placeholder="Enter your research question here..." required></textarea>
@@ -170,6 +171,9 @@
             // Send request to server
             fetch('/research', {
                 method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+                },
                 body: formData
             })
             .then(response => response.json())
