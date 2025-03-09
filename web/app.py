@@ -37,6 +37,11 @@ app.secret_key = os.urandom(24)
 csrf = CSRFProtect(app)
 CORS(app)
 
+# Add context processor for current date/time
+@app.context_processor
+def inject_now():
+    return {'now': datetime.now()}
+
 # Initialize session storage for research history
 if not os.path.exists('web/research_history'):
     os.makedirs('web/research_history')
