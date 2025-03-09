@@ -13,6 +13,7 @@ The Deep Research AI Agentic System is designed to automate the process of condu
 - **Content Analysis**: Web crawling capabilities for deeper content extraction
 - **Comprehensive Output**: Verified answers with cited sources
 - **Google Gemini Integration**: Powered by Google's Gemini AI models
+- **Web Interface**: Modern, responsive web application for easy interaction with the system
 
 ## System Architecture
 
@@ -25,6 +26,8 @@ The system consists of the following components:
 3. **Implementation Options**:
    - **Standard Version**: Uses LangGraph for workflow orchestration (may require specific LangGraph versions)
    - **Simplified Version**: Direct agent implementation without LangGraph (recommended for reliability)
+
+4. **Web Interface**: A Flask-based web application that provides a user-friendly interface for interacting with the system.
 
 ## Workflow
 
@@ -55,19 +58,40 @@ The system consists of the following components:
 
 ## Usage
 
-### Recommended: Simplified Version
+### Web Interface (Recommended)
+
+The easiest way to use Deep Research AI is through the web interface:
+
+```
+python run_web.py
+```
+
+Then open your browser and navigate to `http://localhost:5000` to access the web interface.
+
+### Command Line Interface
+
+#### Recommended: Simplified Version
 
 For reliable operation, use the simplified version that doesn't rely on LangGraph:
 ```
 python simple_main.py "Your research question here"
 ```
 
-### Alternative: LangGraph Version
+#### Alternative: LangGraph Version
 
 If you want to use the LangGraph-based implementation (note: may require specific LangGraph versions):
 ```
 python main.py "Your research question here"
 ```
+
+## Web Interface Features
+
+The web interface provides a user-friendly way to interact with the Deep Research AI system:
+
+- **Research Form**: Submit research questions and choose between the simplified and LangGraph implementations
+- **Research History**: View and manage your past research
+- **Detailed Results**: View comprehensive research results with proper formatting
+- **Export Options**: Print or copy research results to clipboard
 
 ## Implementation Notes
 
@@ -89,6 +113,7 @@ This project provides two implementations of the same functionality:
 
 - `main.py`: Entry point for the LangGraph implementation
 - `simple_main.py`: Entry point for the simplified implementation (recommended)
+- `run_web.py`: Entry point for the web interface
 - `deep_research/`: Main package
   - `workflow.py`: LangGraph workflow orchestrator
   - `agents/`: Contains the specialized agent implementations
@@ -97,6 +122,11 @@ This project provides two implementations of the same functionality:
   - `utils/`: Utility functions
     - `search_utils.py`: Functions for web search
     - `web_utils.py`: Functions for web content extraction
+- `web/`: Web interface
+  - `app.py`: Flask application
+  - `templates/`: HTML templates
+  - `static/`: Static assets (CSS, JS)
+  - `research_history/`: Storage for research history
 
 ## Dependencies
 
@@ -108,6 +138,10 @@ This project provides two implementations of the same functionality:
 - Requests: For HTTP requests
 - Python-dotenv: For environment variable management
 - Pydantic: For data validation
+- Flask: For the web interface
+- Flask-WTF: For form handling in the web interface
+- Flask-CORS: For cross-origin resource sharing in the web interface
+- Markdown: For converting markdown to HTML in the web interface
 
 ## Troubleshooting
 

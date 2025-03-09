@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Research History - Deep Research AI{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>Research History</h1>
+                {% if history %}
+                <form action="{{ url_for('clear_history') }}" method="post" onsubmit="return confirm('Are you sure you want to clear your research history? This action cannot be undone.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-outline-danger">
+                        <i class="fas fa-trash-alt me-2"></i>Clear History
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+            
+            {% if history %}
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="mb-0">Your Past Research</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="list-group">
+                            {% for item in history %}
+                                <a href="{{ url_for('view_research', research_id=item.id) }}" class="list-group-item list-group-item-action">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <h5 class="mb-1">{{ item.question }}</h5>
+                                    </div>
+                                    <p class="mb-1 text-muted">
+                                        <i class="fas fa-clock me-1"></i>{{ item.timestamp }}
+                                    </p>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="fas fa-history fa-4x mb-3 text-muted"></i>
+                        <h3>No Research History</h3>
+                        <p class="lead">You haven't conducted any research yet.</p>
+                        <a href="{{ url_for('index') }}" class="btn btn-primary mt-3">
+                            <i class="fas fa-search me-2"></i>Start Researching
+                        </a>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %} 

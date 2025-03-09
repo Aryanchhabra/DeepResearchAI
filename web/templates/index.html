@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Deep Research AI - Comprehensive Research Assistant{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-7">
+                <h1>Deep Research AI</h1>
+                <p class="lead mb-4">A comprehensive research assistant that performs web research and drafts detailed, fact-checked answers with citations.</p>
+                <p>Ask any research question and get a well-researched, fact-checked answer with proper citations.</p>
+            </div>
+            <div class="col-lg-5 d-none d-lg-block text-center">
+                <img src="https://cdn-icons-png.flaticon.com/512/2103/2103633.png" alt="AI Research" class="img-fluid" style="max-height: 250px; filter: brightness(0) invert(1); opacity: 0.8;">
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="container">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <!-- Research Form -->
+            <div class="research-form">
+                <h2 class="mb-4 text-center">Ask a Research Question</h2>
+                <form id="researchForm">
+                    <div class="mb-3">
+                        <label for="question" class="form-label">Your Question</label>
+                        <textarea class="form-control" id="question" name="question" rows="3" placeholder="Enter your research question here..." required></textarea>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="useLangGraph" name="use_langgraph">
+                        <label class="form-check-label" for="useLangGraph">Use LangGraph implementation (experimental)</label>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-search me-2"></i>Research
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="loadingSpinner" class="loading-spinner">
+                <div class="d-flex flex-column align-items-center">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="lead">Researching your question...</p>
+                    <p class="text-muted">This may take a minute or two depending on the complexity of your question.</p>
+                </div>
+            </div>
+
+            <!-- Research Results -->
+            <div id="researchResults" style="display: none;">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="mb-0">Research Results</h3>
+                    </div>
+                    <div class="card-body">
+                        <h4 id="resultQuestion" class="mb-3"></h4>
+                        <div class="answer-content" id="resultAnswer"></div>
+                        
+                        <h5 class="mt-4 mb-3">Sources</h5>
+                        <div id="resultSources"></div>
+                        
+                        <div class="mt-4 text-center">
+                            <a id="viewDetailLink" href="#" class="btn btn-primary">
+                                <i class="fas fa-external-link-alt me-2"></i>View Full Details
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recent Research -->
+            <div class="mt-5" id="recentResearch">
+                <h3 class="mb-4">Recent Research</h3>
+                {% if history %}
+                    <div class="list-group">
+                        {% for item in history[:5] %}
+                            <a href="{{ url_for('view_research', research_id=item.id) }}" class="list-group-item list-group-item-action">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h5 class="mb-1">{{ item.question }}</h5>
+                                    <small class="text-muted">{{ item.timestamp }}</small>
+                                </div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                    <div class="text-center mt-3">
+                        <a href="{{ url_for('history') }}" class="btn btn-outline-primary">
+                            <i class="fas fa-history me-2"></i>View All History
+                        </a>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>No research history yet. Ask your first question above!
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Features Section -->
+    <div class="row mt-5">
+        <div class="col-12 text-center mb-4">
+            <h2>Key Features</h2>
+            <p class="lead">Powerful research capabilities at your fingertips</p>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-robot fa-3x mb-3" style="color: var(--primary-color);"></i>
+                    <h4>Multi-Agent Architecture</h4>
+                    <p>Specialized agents for research and answer drafting work together to produce high-quality results.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-search fa-3x mb-3" style="color: var(--primary-color);"></i>
+                    <h4>Web Research</h4>
+                    <p>Integration with Tavily Search API for high-quality search results and web crawling for deeper content extraction.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-check-double fa-3x mb-3" style="color: var(--primary-color);"></i>
+                    <h4>Fact-Checked Answers</h4>
+                    <p>Verified answers with cited sources ensure accuracy and reliability of the information provided.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const researchForm = document.getElementById('researchForm');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const researchResults = document.getElementById('researchResults');
+        const resultQuestion = document.getElementById('resultQuestion');
+        const resultAnswer = document.getElementById('resultAnswer');
+        const resultSources = document.getElementById('resultSources');
+        const viewDetailLink = document.getElementById('viewDetailLink');
+        const recentResearch = document.getElementById('recentResearch');
+        
+        researchForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Get form data
+            const formData = new FormData(researchForm);
+            const question = formData.get('question');
+            
+            // Show loading spinner, hide results and recent research
+            loadingSpinner.style.display = 'block';
+            researchResults.style.display = 'none';
+            recentResearch.style.display = 'none';
+            
+            // Send request to server
+            fetch('/research', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Hide loading spinner
+                loadingSpinner.style.display = 'none';
+                
+                // Display results
+                resultQuestion.textContent = data.question;
+                
+                // Convert markdown to HTML (simple conversion for display)
+                const converter = new showdown.Converter();
+                resultAnswer.innerHTML = converter.makeHtml(data.answer);
+                
+                // Display sources
+                resultSources.innerHTML = '';
+                if (data.sources && data.sources.length > 0) {
+                    data.sources.forEach((source, index) => {
+                        const sourceDiv = document.createElement('div');
+                        sourceDiv.className = 'source-item';
+                        sourceDiv.innerHTML = `
+                            <strong>${index + 1}. ${source.title || 'Unknown'}</strong>
+                            <div><a href="${source.url}" target="_blank">${source.url}</a></div>
+                        `;
+                        resultSources.appendChild(sourceDiv);
+                    });
+                } else {
+                    resultSources.innerHTML = '<div class="alert alert-warning">No sources available</div>';
+                }
+                
+                // Set view detail link
+                if (data.id) {
+                    viewDetailLink.href = `/research/${data.id}`;
+                } else {
+                    viewDetailLink.style.display = 'none';
+                }
+                
+                // Show results
+                researchResults.style.display = 'block';
+                
+                // Scroll to results
+                researchResults.scrollIntoView({ behavior: 'smooth' });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                loadingSpinner.style.display = 'none';
+                alert('An error occurred while processing your request. Please try again.');
+                recentResearch.style.display = 'block';
+            });
+        });
+    });
+</script>
+<!-- Showdown.js for Markdown to HTML conversion -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/2.1.0/showdown.min.js"></script>
+{% endblock %} 
