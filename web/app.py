@@ -366,28 +366,50 @@ def research_progress(task_id):
         task = research_tasks[task_id]
         queue = task["queue"]
         
-        while True:
-            try:
-                # Get the next update from the queue (non-blocking)
-                update = queue.get(block=False)
-                
-                # Send the update as a server-sent event
-                yield f"data: {json.dumps(update)}\n\n"
-                
-                # If this is the final update, break the loop
-                if update["status"] in ["completed", "error"]:
-                    # Clean up the task
-                    research_tasks.pop(task_id, None)
+        try:
+            # Send an initial heartbeat
+            yield f"data: {json.dumps({'status': 'connected'})}\n\n"
+            
+            while True:
+                try:
+                    # Get the next update from the queue (with a timeout)
+                    try:
+                        update = queue.get(block=True, timeout=0.5)
+                        
+                        # Send the update as a server-sent event
+                        yield f"data: {json.dumps(update)}\n\n"
+                        
+                        # If this is the final update, break the loop
+                        if update["status"] in ["completed", "error"]:
+                            # Clean up the task
+                            research_tasks.pop(task_id, None)
+                            break
+                            
+                    except queue.Empty:
+                        # No updates available, send a heartbeat
+                        yield f"data: {json.dumps({'status': 'heartbeat'})}\n\n"
+                        
+                except Exception as e:
+                    # Log the error
+                    logger.error(f"Error in SSE stream: {str(e)}")
+                    # Send an error update
+                    yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
                     break
-                    
-            except queue.Empty:
-                # No updates available, wait a bit
-                time.sleep(0.1)
-                
-                # Send a heartbeat to keep the connection alive
-                yield f"data: {json.dumps({'status': 'heartbeat'})}\n\n"
+        except GeneratorExit:
+            # Client disconnected
+            logger.info(f"Client disconnected from SSE stream for task {task_id}")
+            # Clean up the task if it's still there
+            if task_id in research_tasks:
+                research_tasks.pop(task_id, None)
     
-    return Response(stream_with_context(generate()), content_type='text/event-stream')
+    return Response(
+        stream_with_context(generate()),
+        content_type='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no'  # Disable buffering in Nginx
+        }
+    )
 
 @app.route('/history')
 def history():
