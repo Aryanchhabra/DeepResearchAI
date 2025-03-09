@@ -43,14 +43,40 @@
                 </form>
             </div>
 
-            <!-- Loading Spinner -->
+            <!-- Interactive Loading Spinner -->
             <div id="loadingSpinner" class="loading-spinner">
                 <div class="d-flex flex-column align-items-center">
                     <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    <p class="lead">Researching your question...</p>
-                    <p class="text-muted">This may take a minute or two depending on the complexity of your question.</p>
+                    <h4 id="loadingStep" class="mb-2">Starting research process...</h4>
+                    <p id="loadingMessage" class="lead mb-3">Initializing research agents...</p>
+                    
+                    <div class="progress w-100 mb-3" style="height: 20px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                    </div>
+                    
+                    <div id="researchSteps" class="w-100 mb-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="badge bg-secondary" id="step-initializing">Initializing</span>
+                            <span class="badge bg-secondary" id="step-searching">Searching</span>
+                            <span class="badge bg-secondary" id="step-extracting">Extracting</span>
+                            <span class="badge bg-secondary" id="step-drafting">Drafting</span>
+                            <span class="badge bg-secondary" id="step-fact_checking">Fact Checking</span>
+                            <span class="badge bg-secondary" id="step-finalizing">Finalizing</span>
+                        </div>
+                    </div>
+                    
+                    <div id="partialResults" class="w-100 mt-3" style="display: none;">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Partial Results</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="partialContent"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -149,12 +175,38 @@
     document.addEventListener('DOMContentLoaded', function() {
         const researchForm = document.getElementById('researchForm');
         const loadingSpinner = document.getElementById('loadingSpinner');
+        const loadingStep = document.getElementById('loadingStep');
+        const loadingMessage = document.getElementById('loadingMessage');
+        const progressBar = document.getElementById('progressBar');
         const researchResults = document.getElementById('researchResults');
         const resultQuestion = document.getElementById('resultQuestion');
         const resultAnswer = document.getElementById('resultAnswer');
         const resultSources = document.getElementById('resultSources');
         const viewDetailLink = document.getElementById('viewDetailLink');
         const recentResearch = document.getElementById('recentResearch');
+        const partialResults = document.getElementById('partialResults');
+        const partialContent = document.getElementById('partialContent');
+        
+        // Function to update the step badges
+        function updateStepBadges(currentStep) {
+            // Reset all badges to secondary
+            document.querySelectorAll('#researchSteps .badge').forEach(badge => {
+                badge.className = 'badge bg-secondary';
+            });
+            
+            // Set completed steps to success
+            const steps = ['initializing', 'searching', 'extracting', 'drafting', 'fact_checking', 'finalizing'];
+            const currentIndex = steps.indexOf(currentStep);
+            
+            if (currentIndex >= 0) {
+                for (let i = 0; i <= currentIndex; i++) {
+                    const badge = document.getElementById(`step-${steps[i]}`);
+                    if (badge) {
+                        badge.className = i === currentIndex ? 'badge bg-primary' : 'badge bg-success';
+                    }
+                }
+            }
+        }
         
         researchForm.addEventListener('submit', function(e) {
             e.preventDefault();
@@ -167,9 +219,18 @@
             loadingSpinner.style.display = 'block';
             researchResults.style.display = 'none';
             recentResearch.style.display = 'none';
+            partialResults.style.display = 'none';
             
-            // Send request to server
-            fetch('/research', {
+            // Reset progress bar
+            progressBar.style.width = '0%';
+            progressBar.setAttribute('aria-valuenow', 0);
+            progressBar.textContent = '0%';
+            
+            // Reset step badges
+            updateStepBadges('');
+            
+            // Send request to server to start the research
+            fetch('/stream_research', {
                 method: 'POST',
                 headers: {
                     'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
@@ -178,48 +239,125 @@
             })
             .then(response => response.json())
             .then(data => {
-                // Hide loading spinner
-                loadingSpinner.style.display = 'none';
-                
-                // Display results
-                resultQuestion.textContent = data.question;
-                
-                // Convert markdown to HTML (simple conversion for display)
-                const converter = new showdown.Converter();
-                resultAnswer.innerHTML = converter.makeHtml(data.answer);
-                
-                // Display sources
-                resultSources.innerHTML = '';
-                if (data.sources && data.sources.length > 0) {
-                    data.sources.forEach((source, index) => {
-                        const sourceDiv = document.createElement('div');
-                        sourceDiv.className = 'source-item';
-                        sourceDiv.innerHTML = `
-                            <strong>${index + 1}. ${source.title || 'Unknown'}</strong>
-                            <div><a href="${source.url}" target="_blank">${source.url}</a></div>
-                        `;
-                        resultSources.appendChild(sourceDiv);
-                    });
+                if (data.task_id) {
+                    // Start listening for progress updates
+                    const eventSource = new EventSource(`/research_progress/${data.task_id}`);
+                    
+                    eventSource.onmessage = function(event) {
+                        const update = JSON.parse(event.data);
+                        
+                        // Skip heartbeat updates
+                        if (update.status === 'heartbeat') {
+                            return;
+                        }
+                        
+                        // Update the loading UI
+                        if (update.step) {
+                            loadingStep.textContent = update.step.charAt(0).toUpperCase() + update.step.slice(1);
+                            updateStepBadges(update.step);
+                        }
+                        
+                        if (update.message) {
+                            loadingMessage.textContent = update.message;
+                        }
+                        
+                        if (update.progress) {
+                            progressBar.style.width = `${update.progress}%`;
+                            progressBar.setAttribute('aria-valuenow', update.progress);
+                            progressBar.textContent = `${update.progress}%`;
+                        }
+                        
+                        // Show partial results if available
+                        if (update.step === 'extracting' || update.step === 'searching') {
+                            partialResults.style.display = 'block';
+                            partialContent.innerHTML = `<p>Searching for information about: <strong>${question}</strong></p>`;
+                        } else if (update.step === 'drafting') {
+                            partialResults.style.display = 'block';
+                            partialContent.innerHTML = `<p>Drafting an answer based on the research findings...</p>`;
+                        } else if (update.step === 'fact_checking') {
+                            partialResults.style.display = 'block';
+                            partialContent.innerHTML = `<p>Fact-checking the drafted answer against the source materials...</p>`;
+                        }
+                        
+                        // Handle completion
+                        if (update.status === 'completed' || update.status === 'error') {
+                            // Close the event source
+                            eventSource.close();
+                            
+                            // Hide loading spinner
+                            loadingSpinner.style.display = 'none';
+                            
+                            if (update.status === 'completed' && update.results) {
+                                // Display results
+                                resultQuestion.textContent = update.results.question;
+                                
+                                // Convert markdown to HTML
+                                const converter = new showdown.Converter();
+                                resultAnswer.innerHTML = converter.makeHtml(update.results.answer);
+                                
+                                // Display sources
+                                resultSources.innerHTML = '';
+                                if (update.results.sources && update.results.sources.length > 0) {
+                                    update.results.sources.forEach((source, index) => {
+                                        const sourceDiv = document.createElement('div');
+                                        sourceDiv.className = 'source-item';
+                                        sourceDiv.innerHTML = `
+                                            <strong>${index + 1}. ${source.title || 'Unknown'}</strong>
+                                            <div><a href="${source.url}" target="_blank">${source.url}</a></div>
+                                        `;
+                                        resultSources.appendChild(sourceDiv);
+                                    });
+                                } else {
+                                    resultSources.innerHTML = '<div class="alert alert-warning">No sources available</div>';
+                                }
+                                
+                                // Set view detail link
+                                if (update.results.id) {
+                                    viewDetailLink.href = `/research/${update.results.id}`;
+                                } else {
+                                    viewDetailLink.style.display = 'none';
+                                }
+                                
+                                // Show results
+                                researchResults.style.display = 'block';
+                                
+                                // Scroll to results
+                                researchResults.scrollIntoView({ behavior: 'smooth' });
+                            } else {
+                                // Show error
+                                alert('An error occurred while processing your request. Please try again.');
+                                recentResearch.style.display = 'block';
+                            }
+                        }
+                    };
+                    
+                    eventSource.onerror = function() {
+                        // Close the event source
+                        eventSource.close();
+                        
+                        // Hide loading spinner
+                        loadingSpinner.style.display = 'none';
+                        
+                        // Show error
+                        alert('An error occurred while processing your request. Please try again.');
+                        recentResearch.style.display = 'block';
+                    };
                 } else {
-                    resultSources.innerHTML = '<div class="alert alert-warning">No sources available</div>';
+                    // Hide loading spinner
+                    loadingSpinner.style.display = 'none';
+                    
+                    // Show error
+                    alert('An error occurred while starting the research. Please try again.');
+                    recentResearch.style.display = 'block';
                 }
-                
-                // Set view detail link
-                if (data.id) {
-                    viewDetailLink.href = `/research/${data.id}`;
-                } else {
-                    viewDetailLink.style.display = 'none';
-                }
-                
-                // Show results
-                researchResults.style.display = 'block';
-                
-                // Scroll to results
-                researchResults.scrollIntoView({ behavior: 'smooth' });
             })
             .catch(error => {
                 console.error('Error:', error);
+                
+                // Hide loading spinner
                 loadingSpinner.style.display = 'none';
+                
+                // Show error
                 alert('An error occurred while processing your request. Please try again.');
                 recentResearch.style.display = 'block';
             });

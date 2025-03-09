@@ -8,8 +8,11 @@ import sys
 import json
 import logging
 import markdown
+import time
+import threading
+import queue
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response, stream_with_context
 from flask_cors import CORS
 from flask_wtf.csrf import CSRFProtect
 
@@ -39,6 +42,10 @@ CORS(app)
 
 # Exempt the research endpoint from CSRF protection
 csrf.exempt('research')
+csrf.exempt('stream_research')
+
+# Store active research tasks
+research_tasks = {}
 
 # Add context processor for current date/time
 @app.context_processor
@@ -92,6 +99,144 @@ def get_research_by_id(research_id):
             return json.load(f)
     except FileNotFoundError:
         return None
+
+def run_research_with_updates(question, use_langgraph, task_id, progress_queue):
+    """
+    Run the research workflow with progress updates.
+    
+    Args:
+        question: The research question
+        use_langgraph: Whether to use the LangGraph implementation
+        task_id: The ID of the research task
+        progress_queue: Queue to send progress updates
+    """
+    try:
+        # Send initial update
+        progress_queue.put({
+            "status": "in_progress",
+            "step": "starting",
+            "message": "Starting research process...",
+            "progress": 5
+        })
+        
+        if use_langgraph:
+            # Import the workflow (only when needed to avoid unnecessary imports)
+            from deep_research.workflow import DeepResearchWorkflow
+            
+            # Initialize the workflow
+            progress_queue.put({
+                "status": "in_progress",
+                "step": "initializing",
+                "message": "Initializing LangGraph workflow...",
+                "progress": 10
+            })
+            workflow = DeepResearchWorkflow()
+            
+            # Run the workflow
+            progress_queue.put({
+                "status": "in_progress",
+                "step": "researching",
+                "message": "Conducting research with LangGraph...",
+                "progress": 20
+            })
+            results = workflow.run(question)
+        else:
+            # Initialize agents
+            progress_queue.put({
+                "status": "in_progress",
+                "step": "initializing",
+                "message": "Initializing research agents...",
+                "progress": 10
+            })
+            research_agent = ResearchAgent()
+            answer_agent = AnswerAgent()
+            
+            # Step 1: Conduct research
+            progress_queue.put({
+                "status": "in_progress",
+                "step": "searching",
+                "message": "Generating search queries and performing web searches...",
+                "progress": 20
+            })
+            time.sleep(1)  # Give time for the frontend to update
+            
+            progress_queue.put({
+                "status": "in_progress",
+                "step": "extracting",
+                "message": "Extracting content from web pages...",
+                "progress": 40
+            })
+            research_results = research_agent.conduct_research(question)
+            
+            # Step 2: Draft answer
+            progress_queue.put({
+                "status": "in_progress",
+                "step": "drafting",
+                "message": "Drafting initial answer based on research findings...",
+                "progress": 60
+            })
+            draft_answer = answer_agent.draft_answer(research_results)
+            
+            # Step 3: Fact check
+            progress_queue.put({
+                "status": "in_progress",
+                "step": "fact_checking",
+                "message": "Fact-checking the drafted answer against sources...",
+                "progress": 80
+            })
+            fact_check = answer_agent.fact_check(draft_answer, research_results)
+            
+            # Step 4: Finalize answer
+            progress_queue.put({
+                "status": "in_progress",
+                "step": "finalizing",
+                "message": "Finalizing the answer with citations...",
+                "progress": 90
+            })
+            final_answer = answer_agent.finalize_answer(fact_check)
+            
+            results = {
+                "question": question,
+                "answer": final_answer.get("answer", "No answer generated."),
+                "sources": final_answer.get("sources", []),
+                "status": "success"
+            }
+        
+        # Save to history
+        research_id = save_research_to_history(
+            question, 
+            results.get("answer", "No answer generated."),
+            results.get("sources", [])
+        )
+        results["id"] = research_id
+        
+        # Send final update
+        progress_queue.put({
+            "status": "completed",
+            "step": "completed",
+            "message": "Research completed successfully!",
+            "progress": 100,
+            "results": results
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in research workflow: {str(e)}")
+        error_results = {
+            "question": question,
+            "answer": f"An error occurred during research: {str(e)}",
+            "sources": [],
+            "status": "error",
+            "errors": [str(e)]
+        }
+        
+        # Send error update
+        progress_queue.put({
+            "status": "error",
+            "step": "error",
+            "message": f"Error: {str(e)}",
+            "progress": 100,
+            "results": error_results
+        })
 
 def run_research(question, use_langgraph=False):
     """
@@ -177,6 +322,72 @@ def research():
     results = run_research(question, use_langgraph)
     
     return jsonify(results)
+
+@app.route('/stream_research', methods=['POST'])
+def stream_research():
+    """Handle streaming research requests."""
+    data = request.form
+    question = data.get('question', '')
+    use_langgraph = data.get('use_langgraph', 'false').lower() == 'true'
+    
+    if not question:
+        return jsonify({"error": "No question provided"}), 400
+    
+    # Create a unique task ID
+    task_id = f"task_{int(time.time())}_{hash(question) % 10000}"
+    
+    # Create a queue for progress updates
+    progress_queue = queue.Queue()
+    
+    # Store the task
+    research_tasks[task_id] = {
+        "queue": progress_queue,
+        "status": "starting"
+    }
+    
+    # Start the research in a background thread
+    thread = threading.Thread(
+        target=run_research_with_updates,
+        args=(question, use_langgraph, task_id, progress_queue)
+    )
+    thread.daemon = True
+    thread.start()
+    
+    # Return the task ID
+    return jsonify({"task_id": task_id})
+
+@app.route('/research_progress/<task_id>')
+def research_progress(task_id):
+    """Stream research progress updates."""
+    if task_id not in research_tasks:
+        return jsonify({"error": "Task not found"}), 404
+    
+    def generate():
+        task = research_tasks[task_id]
+        queue = task["queue"]
+        
+        while True:
+            try:
+                # Get the next update from the queue (non-blocking)
+                update = queue.get(block=False)
+                
+                # Send the update as a server-sent event
+                yield f"data: {json.dumps(update)}\n\n"
+                
+                # If this is the final update, break the loop
+                if update["status"] in ["completed", "error"]:
+                    # Clean up the task
+                    research_tasks.pop(task_id, None)
+                    break
+                    
+            except queue.Empty:
+                # No updates available, wait a bit
+                time.sleep(0.1)
+                
+                # Send a heartbeat to keep the connection alive
+                yield f"data: {json.dumps({'status': 'heartbeat'})}\n\n"
+    
+    return Response(stream_with_context(generate()), content_type='text/event-stream')
 
 @app.route('/history')
 def history():
